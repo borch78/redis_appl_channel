@@ -2,6 +2,7 @@
 
 import sys
 import time
+import uuid
 import redis
 import random
 
@@ -21,7 +22,7 @@ class Worker:
         self.psbb_red = self.conn_red.pubsub()
         self.psbb_red.subscribe(self.name_channel)
 
-        self.appl_num = 'APP-' + str(random.randint(0, 10000))
+        self.appl_num = uuid.uuid4().hex
         begin_time_generate = time.time()
         
         waiting_generate = 5
@@ -33,7 +34,7 @@ class Worker:
                     self.genr_num = data_mess[2:data_mess.find(':')]
                     break
             if time.time() - begin_time_generate > waiting_generate:
-                self.genr_num = app_ident
+                self.genr_num = self.appl_num
                 break
             time.sleep(1)
 
