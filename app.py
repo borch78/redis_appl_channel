@@ -1,10 +1,11 @@
 
-
 import sys
 import time
 import uuid
 import redis
 import random
+import logging
+import config
 
 
 class Worker:
@@ -18,13 +19,14 @@ class Worker:
 
 
     def conn_channel(self, redis_conn):
-        self.conn_red = redis.StrictRedis(**redis_conn)
+        self.conn_red = redis.StrictRedis(**config.REDIS)
         self.psbb_red = self.conn_red.pubsub()
         self.psbb_red.subscribe(self.name_channel)
 
         self.appl_num = uuid.uuid4().hex
         begin_time_generate = time.time()
 
+        # Ожидаем 5 секунд с момента подключения в канал, прежде чем взять на себя роль генератора сообщений
         waiting_generate = 5
         while True:
             message = self.psbb_red.get_message()
@@ -111,7 +113,7 @@ class Worker:
 
 
 def Processing_error(redis_conn):
-    r = redis.StrictRedis(**redis_conn)
+    r = redis.StrictRedis(**config.REDIS)
     d_err_from_redis = r.keys('Error:*')
     for element in d_err_from_redis:
         print(element)
@@ -126,12 +128,11 @@ def Processing_error(redis_conn):
 
 if __name__ == '__main__':
     get_err = False
-    redis_conn = {'host': 'localhost', 'port': 6379}
     for param in sys.argv:
         if param == 'getErrors':
             get_err = True
     if get_err:
-        Processing_error(redis_conn)
+        Processing_error()
     else:
         worker_ex = Worker('warnings')
-        worker_ex.conn_channel(redis_conn)
+        worker_ex.conn_channel()
