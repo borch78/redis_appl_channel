@@ -9,22 +9,20 @@ import config
 
 
 class Worker:
-    """docstring"""
  
-    def __init__(self, name_channel='warnings', genr_num='generate',appl_num='application'):
-        """Constructor"""
+    def __init__(self, name_channel='warnings', genr_num='generate', appl_num='application'):
         self.name_channel = name_channel
         self.genr_num = genr_num
         self.appl_num = appl_num
         self.time_working_programm = 10
-        self.waiting_time = 1.1
+        self.generate_time_sleep = 0.5
 
+        self.waiting_time = 1.1
 
     def conn_channel(self):
         self.conn_red = redis.StrictRedis(**config.REDIS)
         self.psbb_red = self.conn_red.pubsub()
         self.psbb_red.subscribe(self.name_channel)
-
         self.appl_num = uuid.uuid4().hex
         begin_time_generate = time.time()
 
@@ -52,14 +50,14 @@ class Worker:
         begin_time_generate = time.time()
         # Отправляем в канал информацию о новом генераторе
         self.conn_red.publish(self.name_channel, self.genr_num)
-        time.sleep(0.5)
+        time.sleep(self.generate_time_slee)
         while True:
             # Генерируем новое сообщение и отправляем в канал
             self.conn_red.publish(self.name_channel, self.genr_num + ':GENERATE ' + self.generate_text())
             # Проверка времени работы программы
             if time.time() - begin_time_generate > self.time_working_programm:
                 break
-            time.sleep(0.5)   
+            time.sleep(self.generate_time_slee)
 
 
     def split_message_info(self, message):
@@ -82,15 +80,10 @@ class Worker:
                 if self.genr_num in data_mess and not processed_message:
                     # Сообщение имеет ошибку
                     if random.randint(0, 100) <= 5:
-                        self.conn_red.publish(self.name_channel, self.appl_num 
-                            + ':APPLICATION:PROCESSED ' + self.split_message_info(data_mess) + ' ERROR')
-                        dict_to_store = {'Message' : self.split_message_info(data_mess)[:-1]}
-                        # Записываем ошибку в базу
-                        self.conn_red.hmset('Error:' + self.appl_num, dict_to_store)
-                        time.sleep(0.2)
+                        self.save_message_with_error(data_mess)
                         continue
                     else:
-                        # Send processing message
+                        # Отправляем сообщение о том, что сообщение генератора обработано
                         self.conn_red.publish(self.name_channel, self.appl_num + 
                             ':APPLICATION:PROCESSED ' + self.split_message_info(data_mess))
                         # print('processed ' + data_mess.split(' ')[1])
@@ -108,6 +101,14 @@ class Worker:
             if time.time() - begin_time_generate > self.time_working_programm:
                 break
             time.sleep(0.2)
+
+    def save_message_with_error(self, data_mess):
+        self.conn_red.publish(self.name_channel, self.appl_num
+                              + ':APPLICATION:PROCESSED ' + self.split_message_info(data_mess) + ' ERROR')
+        dict_to_store = {'Message': self.split_message_info(data_mess)[:-1]}
+        # Записываем ошибку в базу
+        self.conn_red.hmset('Error:' + self.appl_num, dict_to_store)
+        time.sleep(0.2)
 
 
     def generate_text(self):
