@@ -16,9 +16,11 @@ class Worker:
         self.name_channel = name_channel
         self.genr_num = genr_num
         self.appl_num = appl_num
+        self.time_working_programm = 10
+        self.waiting_time = 1.1
 
 
-    def conn_channel(self, redis_conn):
+    def conn_channel(self):
         self.conn_red = redis.StrictRedis(**config.REDIS)
         self.psbb_red = self.conn_red.pubsub()
         self.psbb_red.subscribe(self.name_channel)
@@ -48,14 +50,14 @@ class Worker:
 
     def work_generate(self):
         begin_time_generate = time.time()
-        #Send determine for generator
+        # Отправляем в канал информацию о новом генераторе
         self.conn_red.publish(self.name_channel, self.genr_num)
         time.sleep(0.5)
         while True:
-            #Generate new message and send in channel
+            # Генерируем новое сообщение и отправляем в канал
             self.conn_red.publish(self.name_channel, self.genr_num + ':GENERATE ' + self.generate_text())
-            #Timeline working programm
-            if time.time() - begin_time_generate > 10:
+            # Проверка времени работы программы
+            if time.time() - begin_time_generate > self.time_working_programm:
                 break
             time.sleep(0.5)   
 
@@ -70,40 +72,40 @@ class Worker:
         begin_time_generate = time.time()
         last_message_time = 0
         while True:
-            #Get text message
+            # Получаем сообщение из канала
             message = self.psbb_red.get_message()
             if message:
                 data_mess = str(message['data'])
                 processed_message = self.psbb_red.get_message()
                 last_message_time = time.time()
-                #Did generator send message? Did anyone answer?
+                # Проверяем отправил ли генератор сообщение и ответил ли кто-либо на него
                 if self.genr_num in data_mess and not processed_message:
-                    #Message have error
+                    # Сообщение имеет ошибку
                     if random.randint(0, 100) <= 5:
                         self.conn_red.publish(self.name_channel, self.appl_num 
-                            + ':APPLICATION:PROCESSED ' + split_message_info(data_mess) + ' ERROR')
-                        dict_to_store = {'Message' : split_message_info(data_mess)[:-1]}
-                        #Set error message in db
-                        self.conn_red.hmset('Error:'+self.appl_num, dict_to_store)
+                            + ':APPLICATION:PROCESSED ' + self.split_message_info(data_mess) + ' ERROR')
+                        dict_to_store = {'Message' : self.split_message_info(data_mess)[:-1]}
+                        # Записываем ошибку в базу
+                        self.conn_red.hmset('Error:' + self.appl_num, dict_to_store)
                         time.sleep(0.2)
                         continue
                     else:
-                        #Send processing message
+                        # Send processing message
                         self.conn_red.publish(self.name_channel, self.appl_num + 
-                            ':APPLICATION:PROCESSED ' + split_message_info(data_mess))
+                            ':APPLICATION:PROCESSED ' + self.split_message_info(data_mess))
                         # print('processed ' + data_mess.split(' ')[1])
                         time.sleep(0.2)
                         continue
-                #If channel gets new generator save it identeficate
+                # Если в канале появился новый генератор
                 if self.genr_num not in data_mess and ':GENERATE' in data_mess:
-                        self.genr_num = get_name_new_genr(data_mess)         
+                        self.genr_num = self.get_name_new_genr(data_mess)
                         continue
-            #If generator dosen't send message > 1.1 sec appoint new generator
-            if last_message_time and time.time() - last_message_time > 1.1:
+            # Если генератор не отправляет сообщение > self.waiting_time берем на себя функцию генератора
+            if last_message_time and time.time() - last_message_time > self.waiting_time:
                 self.genr_num = self.appl_num.split(':')[0]
                 self.work_generate()
-            #Timeline working programm
-            if time.time() - begin_time_generate > 10:
+            # Проверка времени работы программы
+            if time.time() - begin_time_generate > self.time_working_programm:
                 break
             time.sleep(0.2)
 
@@ -112,7 +114,7 @@ class Worker:
         return ''.join([chr(x) for x in list(random.randint(33, 125) for x in range(20))])
 
 
-def Processing_error(redis_conn):
+def Processing_error():
     r = redis.StrictRedis(**config.REDIS)
     d_err_from_redis = r.keys('Error:*')
     for element in d_err_from_redis:
