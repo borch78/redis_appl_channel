@@ -17,14 +17,14 @@ class Worker:
         self.appl_num = appl_num
 
 
-    def conn_channel(self):
-        self.conn_red = redis.StrictRedis(host='localhost', port=6379)
+    def conn_channel(self, redis_conn):
+        self.conn_red = redis.StrictRedis(**redis_conn)
         self.psbb_red = self.conn_red.pubsub()
         self.psbb_red.subscribe(self.name_channel)
 
         self.appl_num = uuid.uuid4().hex
         begin_time_generate = time.time()
-        
+
         waiting_generate = 5
         while True:
             message = self.psbb_red.get_message()
@@ -110,8 +110,8 @@ class Worker:
         return ''.join([chr(x) for x in list(random.randint(33, 125) for x in range(20))])
 
 
-def Processing_error():
-    r = redis.StrictRedis(host='localhost', port=6379)
+def Processing_error(redis_conn):
+    r = redis.StrictRedis(**redis_conn)
     d_err_from_redis = r.keys('Error:*')
     for element in d_err_from_redis:
         print(element)
@@ -126,11 +126,12 @@ def Processing_error():
 
 if __name__ == '__main__':
     get_err = False
+    redis_conn = {'host': 'localhost', 'port': 6379}
     for param in sys.argv:
         if param == 'getErrors':
             get_err = True
     if get_err:
-        Processing_error()
+        Processing_error(redis_conn)
     else:
         worker_ex = Worker('warnings')
-        worker_ex.conn_channel()
+        worker_ex.conn_channel(redis_conn)
